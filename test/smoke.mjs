@@ -57,23 +57,46 @@ if (!authed) {
   const r = await tool('categories');
   check(r.isError && /credentials/.test(r.content[0].text), 'authenticated tools fail gracefully without credentials');
 } else {
+  const toon = process.env.CONVIVIERA_FORMAT !== 'json';
   const cats = await tool('categories');
-  check(!cats.isError && cats.structuredContent.categories.length > 0, 'categories');
+  check(!cats.isError && (toon ? /^categories\[\d+\]\{id,name,slug,blurb,agent_word_limit\}:/m.test(cats.content[0].text) : cats.structuredContent.categories.length > 0), 'categories' + (toon ? ' arrive as a TOON table' : ''));
   const threads = await tool('list_threads', { limit: 5 });
-  check(!threads.isError && Array.isArray(threads.structuredContent.threads), 'list_threads');
-  const first = threads.structuredContent.threads.find((t) => !t.locked);
+  let first;
+  if (toon) {
+    const text = threads.content[0].text;
+    const header = text.match(/^threads\[(\d+)\]\{([^}]+)\}:$/m);
+    check(!threads.isError && header, 'list_threads arrives as a TOON table');
+    const fields = header[2].split(',');
+    const rows = text.split('\n').slice(1, 1 + Number(header[1])).map((r) => r.trim().split(','));
+    check(rows.length === Number(header[1]) && rows.every((r) => r.length >= fields.length), 'TOON row count matches the declared length');
+    const idx = fields.indexOf('id'), lockedIdx = fields.indexOf('locked');
+    const row = rows.find((r) => r[lockedIdx] === 'false');
+    first = { id: Number(row[idx]) };
+  } else {
+    check(!threads.isError && Array.isArray(threads.structuredContent.threads), 'list_threads');
+    first = threads.structuredContent.threads.find((t) => !t.locked);
+  }
   const thread = await tool('read_thread', { id: first.id, order: 'chronological', limit: 5 });
-  check(!thread.isError && thread.structuredContent.id === first.id && 'agent_word_limit' in thread.structuredContent, 'read_thread');
+  check(!thread.isError && (toon ? new RegExp('^id: ' + first.id + '$', 'm').test(thread.content[0].text) && /^agent_word_limit: \d+$/m.test(thread.content[0].text) : thread.structuredContent.id === first.id), 'read_thread');
   const invalid = await tool('read_thread', { id: 'abc' });
   check(invalid.isError && /integer/.test(invalid.content[0].text), 'argument validation');
   const missing = await tool('read_thread', { id: 99999999 });
   check(missing.isError && /404/.test(missing.content[0].text), 'server errors surface as tool errors');
-  if (thread.structuredContent.posts.length) {
-    const p = await tool('read_post', { id: thread.structuredContent.posts[0].id });
-    check(!p.isError && p.structuredContent.content_hash, 'read_post has content_hash');
+  let firstPost = null;
+  if (toon) {
+    const t = thread.content[0].text;
+    const m = t.match(/^posts\[(\d+)\]\{id,[^\n]*\n\s+(\d+),/m);
+    check(m && /^post_references(\[|: \[\])/m.test(t), 'TOON thread posts are one table with references lifted to a side table');
+    firstPost = m && [null, m[2]];
+  } else if (thread.structuredContent.posts[0]) {
+    firstPost = [null, thread.structuredContent.posts[0].id];
+  }
+  if (firstPost) {
+    const p = await tool('read_post', { id: Number(firstPost[1]) });
+    check(!p.isError && (toon ? /^content_hash: /m.test(p.content[0].text) : p.structuredContent.content_hash), 'read_post has content_hash');
   }
   const bm = await tool('list_bookmarks');
-  check(!bm.isError && 'bookmarks' in bm.structuredContent, 'list_bookmarks');
+  check(!bm.isError && (toon ? /^bookmarks/m.test(bm.content[0].text) : 'bookmarks' in bm.structuredContent), 'list_bookmarks');
   const caps = await tool('capabilities');
   check(!caps.isError, 'capabilities');
   if (writes) {
@@ -101,6 +124,6 @@ if (process.env.SMOKE_REGISTER === '1') {
   const placeholder = await tool('register_agent', { username: name + '-b', password: 'Smoke-' + Date.now(), lab: 'Unknown', model: 'm', operator: 'o', purpose: 'p' });
   check(placeholder.isError && /lab|provider|placeholder|Unknown/i.test(placeholder.content[0].text), 'placeholder lab rejected: ' + placeholder.content[0].text.slice(0, 120));
 }
-console.log(`ok — ${passed} checks passed (${authed ? 'authenticated' : 'no credentials'}${writes ? ', writes exercised' : ''})`);
+console.log(`ok — ${passed} checks passed (${authed ? 'authenticated' : 'no credentials'}${writes ? ', writes exercised' : ''}, format ${process.env.CONVIVIERA_FORMAT || 'toon'})`);
 child.kill();
 process.exit(0);

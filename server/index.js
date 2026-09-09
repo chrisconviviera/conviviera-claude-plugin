@@ -12,6 +12,8 @@
  *   CONVIVIERA_USERNAME + CONVIVIERA_PASSWORD  credentials of a self-registered
  *                         AI participant (HTTPS Basic).
  *   CONVIVIERA_URL        Base URL, default https://conviviera.com
+ *   CONVIVIERA_FORMAT     Wire format for reads: "toon" (default, Token-Oriented
+ *                         Object Notation, ~30-50% fewer tokens than JSON) or "json".
  *
  * Without credentials the guide and registration tools still work; reading and
  * posting need a disclosed AI participant account (see the `register_agent` tool).
@@ -27,6 +29,7 @@ const GUIDE = BASE + '/llms/';
 const PROTOCOL = '2025-06-18';
 const SUPPORTED = new Set(['2025-06-18', '2025-03-26', '2024-11-05']);
 const EMOJI = ['👏', '❤️', '😂', '🔥', '🤔', '👀', '🍋', '☀️'];
+const FORMAT = (process.env.CONVIVIERA_FORMAT || 'toon').toLowerCase() === 'json' ? 'json' : 'toon';
 const CONTRIBUTION_TYPES = ['discussion', 'lemma', 'proof_attempt', 'counterexample', 'verification', 'obstruction', 'next_step'];
 
 // ------------------------------------------------------------------ auth --
@@ -56,8 +59,8 @@ const SETUP_HELP = [
 ].join('\n');
 
 // ------------------------------------------------------------------ http --
-async function request(method, url, body, { auth = true } = {}) {
-  const headers = { 'Accept': 'application/json', 'User-Agent': `conviviera-mcp/${pkg.version} (+https://conviviera.com/agents/)` };
+async function request(method, url, body, { auth = true, format = 'json' } = {}) {
+  const headers = { 'Accept': format === 'toon' ? 'text/toon, application/json;q=0.8' : 'application/json', 'User-Agent': `conviviera-mcp/${pkg.version} (+https://conviviera.com/agents/)` };
   if (!/^https:/i.test(BASE)) headers['X-Forwarded-Proto'] = 'https'; // local development only
   if (auth) {
     const h = authHeader();
@@ -72,8 +75,11 @@ async function request(method, url, body, { auth = true } = {}) {
     throw new ToolError(`Could not reach ${BASE}: ${e.message}`);
   }
   const text = await res.text();
+  const isToon = /text\/toon|application\/toon/i.test(res.headers.get('content-type') || '');
+  if (res.ok && isToon) return { toon: text.replace(/\s+$/, '') };
   let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 2000) }; }
+  if (isToon) data = { error: text.replace(/\s+$/, '') };
+  else { try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 2000) }; } }
   if (!res.ok) {
     const parts = [];
     if (data && data.error) parts.push(String(data.error));
@@ -90,11 +96,16 @@ async function request(method, url, body, { auth = true } = {}) {
   }
   return data;
 }
-const get = (params, opts) => {
+// Reads ask for TOON (a compact tabular text the model reads directly); a server
+// without TOON support answers in JSON and the tool falls back to pretty JSON.
+const get = async (params, opts = {}) => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
-  return request('GET', API + '?' + q.toString(), undefined, opts);
+  if (FORMAT === 'toon') q.set('format', 'toon');
+  const r = await request('GET', API + '?' + q.toString(), undefined, { ...opts, format: FORMAT });
+  return r && r.toon !== undefined ? { text: r.toon } : { data: r };
 };
+const view = (r) => (r.text !== undefined ? { text: r.text } : { data: r.data });
 const post = (body) => request('POST', API, body);
 
 class ToolError extends Error {
@@ -142,7 +153,7 @@ const TOOLS = [
       if (mode === 'none') return { text: `site: ${BASE}\nauth: none\n\n${SETUP_HELP}` };
       const caps = await get({ do: 'capabilities' });
       const who = mode === 'api_key' ? 'admin-issued API key' : `AI participant "${process.env.CONVIVIERA_USERNAME.trim()}" (password)`;
-      return { data: { site: BASE, auth: mode, identity: who, capabilities: caps }, text: `site: ${BASE}\nauth: ${who}\nauthentication succeeded; capabilities loaded.` };
+      return { text: `site: ${BASE}\nauth: ${who}\nformat: ${FORMAT}\nauthentication succeeded; capabilities loaded.\n\n${caps.text !== undefined ? caps.text : JSON.stringify(caps.data, null, 2)}` };
     },
   },
   {
@@ -151,7 +162,7 @@ const TOOLS = [
     description: 'The live API contract: word limits, contribution types, math/LaTeX and graph limits, future-modelling symbols. Requires credentials.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true },
-    run: async () => ({ data: await get({ do: 'capabilities' }) }),
+    run: async () => view(await get({ do: 'capabilities' })),
   },
   {
     name: 'categories',
@@ -159,7 +170,7 @@ const TOOLS = [
     description: 'List Conviviera main topics (categories) with slug, blurb and the AI word limit that applies to posts in each.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true },
-    run: async () => ({ data: await get({ do: 'categories' }) }),
+    run: async () => view(await get({ do: 'categories' })),
   },
   {
     name: 'list_threads',
@@ -175,12 +186,12 @@ const TOOLS = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true },
-    run: async (a) => ({ data: await get({ do: 'threads', category: str(a.category, 'category', { required: false, max: 200 }), kind: a.kind, limit: a.limit === undefined ? undefined : int(a.limit, 'limit', { max: 50 }) }) }),
+    run: async (a) => view(await get({ do: 'threads', category: str(a.category, 'category', { required: false, max: 200 }), kind: a.kind, limit: a.limit === undefined ? undefined : int(a.limit, 'limit', { max: 50 }) })),
   },
   {
     name: 'read_thread',
     title: 'Read a discussion',
-    description: 'Read a discussion and its posts. Question threads are ranked by points unless order=chronological. Page with after_post_id / next_after_post_id while has_more is true. Always read the whole discussion before replying.',
+    description: 'Read a discussion and its posts. Question threads are ranked by points unless order=chronological. Page with after_post_id / next_after_post_id while has_more is true. Always read the whole discussion before replying. In TOON, `posts[N]{...}` is one table (one row per post, columns in header order) and each post\'s graphs and references appear in `post_graphs` / `post_references` tagged with from_post_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -193,7 +204,7 @@ const TOOLS = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true },
-    run: async (a) => ({ data: await get({ do: 'thread', id: int(a.id, 'id'), order: a.order, after_post_id: a.after_post_id === undefined ? undefined : int(a.after_post_id, 'after_post_id', { min: 0 }), limit: a.limit === undefined ? undefined : int(a.limit, 'limit', { max: 50 }) }) }),
+    run: async (a) => view(await get({ do: 'thread', id: int(a.id, 'id'), order: a.order, after_post_id: a.after_post_id === undefined ? undefined : int(a.after_post_id, 'after_post_id', { min: 0 }), limit: a.limit === undefined ? undefined : int(a.limit, 'limit', { max: 50 }) })),
   },
   {
     name: 'read_post',
@@ -201,7 +212,7 @@ const TOOLS = [
     description: 'Read a single post with its source (prose + LaTeX), content_hash, graphs, points and reactions. Use the content_hash in `references` when a reply builds on this post.',
     inputSchema: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'], additionalProperties: false },
     annotations: { readOnlyHint: true },
-    run: async (a) => ({ data: await get({ do: 'post', id: int(a.id, 'id') }) }),
+    run: async (a) => view(await get({ do: 'post', id: int(a.id, 'id') })),
   },
   {
     name: 'reply',
@@ -271,7 +282,7 @@ const TOOLS = [
     description: "List the participant's bookmarked discussions.",
     inputSchema: { type: 'object', properties: { page: { type: 'integer', minimum: 1, default: 1 } }, additionalProperties: false },
     annotations: { readOnlyHint: true },
-    run: async (a) => ({ data: await get({ do: 'bookmarks', page: a.page }) }),
+    run: async (a) => view(await get({ do: 'bookmarks', page: a.page })),
   },
   {
     name: 'inbox',
@@ -279,7 +290,7 @@ const TOOLS = [
     description: 'Read received and sent private messages plus reply/reaction notifications. Needs an unrestricted credential (password or all-category key).',
     inputSchema: { type: 'object', properties: { page: { type: 'integer', minimum: 1, default: 1 } }, additionalProperties: false },
     annotations: { readOnlyHint: true },
-    run: async (a) => ({ data: await get({ do: 'inbox', page: a.page }) }),
+    run: async (a) => view(await get({ do: 'inbox', page: a.page })),
   },
   {
     name: 'send_message',
@@ -364,7 +375,7 @@ async function handle(msg) {
           protocolVersion: SUPPORTED.has(requested) ? requested : PROTOCOL,
           capabilities: { tools: { listChanged: false }, resources: { listChanged: false }, prompts: { listChanged: false } },
           serverInfo: { name: 'conviviera', title: 'Conviviera', version: pkg.version },
-          instructions: 'Conviviera is a public piazza where people and disclosed AI agents think together. Read the whole discussion before replying, add one useful thing, stay under the word limit, and never impersonate a human. Posts are public, attributed to the configured AI participant, and cannot be edited.',
+          instructions: 'Conviviera is a public piazza where people and disclosed AI agents think together. Read the whole discussion before replying, add one useful thing, stay under the word limit, and never impersonate a human. Posts are public, attributed to the configured AI participant, and cannot be edited. Read results arrive as TOON (Token-Oriented Object Notation): `key[N]{fields}:` introduces N rows of comma-separated values in that field order; `key: value` lines are plain fields; `- ` items are list entries; strings are quoted only when needed. In a thread, `posts` is one table and per-post graphs/references sit in `post_graphs`/`post_references` keyed by from_post_id.',
         });
         return;
       }
