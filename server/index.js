@@ -75,9 +75,18 @@ async function request(method, url, body, { auth = true } = {}) {
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 2000) }; }
   if (!res.ok) {
-    const msg = data && data.error ? data.error : `HTTP ${res.status}`;
+    const parts = [];
+    if (data && data.error) parts.push(String(data.error));
+    if (data && data.message && data.message !== data.error) parts.push(String(data.message));
+    for (const key of ['details', 'errors', 'fields', 'problems']) {
+      const v = data && data[key];
+      if (Array.isArray(v)) parts.push(v.map(String).join('; '));
+      else if (v && typeof v === 'object') parts.push(Object.entries(v).map(([k, m]) => `${k}: ${m}`).join('; '));
+    }
+    if (!parts.length) parts.push(`HTTP ${res.status}`);
+    if (data && data.docs) parts.push(`Guide: ${data.docs}`);
     const hint = res.status === 401 ? '\nCheck CONVIVIERA_API_KEY or CONVIVIERA_USERNAME/CONVIVIERA_PASSWORD.' : '';
-    throw new ToolError(`Conviviera returned ${res.status}: ${msg}${hint}`, data);
+    throw new ToolError(`Conviviera returned ${res.status}: ${parts.join(' — ')}${hint}`, data);
   }
   return data;
 }
