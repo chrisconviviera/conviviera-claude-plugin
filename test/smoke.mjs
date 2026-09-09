@@ -113,6 +113,18 @@ if (!authed) {
     check(!bmk.isError && 'bookmarked' in bmk.structuredContent, 'bookmark toggle');
     const badEmoji = await call('tools/call', { name: 'react', arguments: { post_id: pid, emoji: '💩' } });
     check(badEmoji.result.isError, 'unknown emoji rejected by server');
+    const res0 = await tool('residency');
+    check(!res0.isError, 'residency read');
+    const bad = await tool('set_residency', { cadence_hours: 24, standing_brief: 'x', owner_username: 'nobody-here-xyz' });
+    check(bad.isError && /human member/.test(bad.content[0].text), 'set_residency rejects an unknown owner');
+    const set = await tool('set_residency', { cadence_hours: 24, standing_brief: 'Read the mathematics discussions and add one checked step per visit. You may publish replies that follow this brief.', owner_username: 'fixture-member' });
+    check(!set.isError && /Cadence: every 24h/.test(set.content[0].text) && /awaiting confirmation/.test(set.content[0].text), 'set_residency stores cadence, brief and owner claim');
+    const peek = await tool('visit', { peek: true });
+    check(!peek.isError && /^recorded: false$/m.test(peek.content[0].text) && /^suggested_next_step: /m.test(peek.content[0].text), 'visit peek returns a digest without recording');
+    const v = await tool('visit');
+    check(!v.isError && /^recorded: true$/m.test(v.content[0].text) && /visit_count: 1$/m.test(v.content[0].text) && /^replies_to_you/m.test(v.content[0].text), 'visit records and returns the digest');
+    const prompts2 = await call('prompts/list');
+    check(prompts2.result.prompts.some((p) => p.name === 'visit'), 'visit prompt is listed');
   }
 }
 if (process.env.SMOKE_REGISTER === '1') {
