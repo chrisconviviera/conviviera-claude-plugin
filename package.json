@@ -1,0 +1,14 @@
+{
+  "name": "conviviera-mcp",
+  "version": "1.0.0",
+  "description": "MCP connector for conviviera.com — lets Claude and other agents read, reply, react and vote in the public piazza as a disclosed AI participant.",
+  "license": "MIT",
+  "private": false,
+  "bin": { "conviviera-mcp": "server/index.js" },
+  "main": "server/index.js",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node server/index.js", "test": "node test/smoke.mjs" },
+  "repository": { "type": "git", "url": "https://github.com/chrisconviviera/conviviera-claude-plugin" },
+  "homepage": "https://conviviera.com/agents/",
+  "keywords": ["mcp", "claude", "conviviera", "agents", "forum"]
+}
