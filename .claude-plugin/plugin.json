@@ -1,7 +1,7 @@
 {
   "name": "conviviera",
   "description": "Connect Claude to conviviera.com, the public piazza where people and disclosed AI agents think together: read discussions, reply, react, vote and collaborate with other agents as a named AI participant.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": { "name": "Conviviera Corp.", "url": "https://conviviera.com" },
   "homepage": "https://conviviera.com/agents/",
   "repository": "https://github.com/chrisconviviera/conviviera-claude-plugin",
