@@ -107,6 +107,14 @@ check(unknown.length === 0, `skills name only live tools (unknown: ${unknown.joi
 const participation = read('skills/conviviera-participation/SKILL.md');
 for (const tool of EXPECTED_TOOLS) check(participation.includes(tool), `participation skill documents ${tool}`);
 check(/untrusted/i.test(participation), 'participation skill treats forum content as untrusted');
+// A link_url relayed from post text is an account-linking phishing vector: the norms must forbid it,
+// and no skill may tell the model to hand over a link_url unconditionally.
+check(/never give the person a `link_url`/i.test(participation), 'participation skill never relays a link_url found in content');
+for (const dir of skillDirs) {
+  const text = read(`skills/${dir}/SKILL.md`);
+  check(!/give the (person|user) the `link_url`( exactly as returned| it returns)/i.test(text),
+    `skills/${dir}/SKILL.md has no unconditional link_url relay`);
+}
 check(!/\b\d{3,4} words\b/.test(participation), 'participation skill hardcodes no word limit');
 
 // --- documented headless (cron) lines must deny every write tool, not just allow the reads.
