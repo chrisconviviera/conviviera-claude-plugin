@@ -1,141 +1,167 @@
-// End-to-end smoke test: speaks MCP over stdio to the server and exercises the
-// tools against CONVIVIERA_URL (a local fixture or the live site).
-// Usage: CONVIVIERA_URL=http://127.0.0.1:8098 CONVIVIERA_API_KEY=cvk_… node test/smoke.mjs
-import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
+// Smoke test for the Conviviera Claude plugin. Zero dependencies.
+//
+//   node test/smoke.mjs                 static checks only
+//   SMOKE_LIVE=1 node test/smoke.mjs    plus unauthenticated OAuth discovery checks
+//
+// The live checks only GET public discovery documents and send one unauthenticated
+// MCP initialize, which must be refused with 401. They never register a client,
+// request a token, or write anything.
+
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 
-const server = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'server', 'index.js');
-const child = spawn(process.execPath, [server], { stdio: ['pipe', 'pipe', 'inherit'], env: process.env });
-const rl = createInterface({ input: child.stdout });
-const pending = new Map();
-let nextId = 1;
-rl.on('line', (line) => {
-  const msg = JSON.parse(line);
-  if (msg.id !== undefined && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-});
-const call = (method, params) => new Promise((resolve) => {
-  const id = nextId++;
-  pending.set(id, resolve);
-  child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
-});
-const notify = (method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
-const tool = async (name, args) => {
-  const r = await call('tools/call', { name, arguments: args || {} });
-  if (r.error) throw new Error(`${name}: rpc error ${JSON.stringify(r.error)}`);
-  return r.result;
-};
-let passed = 0;
-const check = (cond, label) => { if (!cond) { console.error('FAIL', label); process.exitCode = 1; child.kill(); process.exit(1); } passed++; };
-const writes = process.env.SMOKE_WRITES === '1';
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const REMOTE_URL = 'https://connect.conviviera.com/mcp/';
+const ISSUER = 'https://connect.conviviera.com';
+const EXPECTED_TOOLS = [
+  'conviviera_identity', 'conviviera_topics', 'conviviera_discussions',
+  'conviviera_read_discussion', 'conviviera_read_post', 'conviviera_feedback',
+  'conviviera_activity', 'conviviera_start_discussion', 'conviviera_reply',
+  'conviviera_start_run', 'conviviera_run_event',
+];
+const EXPECTED_SKILLS = ['ask', 'catch-up', 'contribute', 'conviviera-participation', 'drop-off', 'setup', 'visit'];
+// Tool names of the retired 1.x local server. None may appear in skills or manifests.
+const LEGACY_TOOLS = ['whoami', 'read_thread', 'list_threads', 'register_agent', 'set_residency',
+  'list_bookmarks', 'send_message', 'mark_notifications_read'];
+// Strings that point at the retired local-credential setup. Allowed only where the
+// upgrade path is explained (README, CHANGELOG and the setup skill's upgrade step).
+const LEGACY_SETUP = ['CONVIVIERA_PASSWORD', 'CONVIVIERA_API_KEY', 'CONVIVIERA_USERNAME', 'server/index.js'];
+const UPGRADE_DOCS = new Set(['README.md', 'CHANGELOG.md', 'skills/setup/SKILL.md']);
+const SECRET_PATTERNS = [/cv[ko]_[A-Za-z0-9]{8,}/, /\bBasic [A-Za-z0-9+/]{12,}={0,2}/,
+  /\bBearer [A-Za-z0-9._~+/-]{20,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
 
-const init = await call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-check(init.result?.protocolVersion === '2025-06-18' && init.result.serverInfo.name === 'conviviera', 'initialize');
-notify('notifications/initialized');
-check((await call('ping')).result !== undefined, 'ping');
-const list = await call('tools/list');
-const names = list.result.tools.map((t) => t.name);
-check(names.includes('reply') && names.includes('read_thread') && names.includes('register_agent'), 'tools/list ' + names.length + ' tools');
-for (const t of list.result.tools) check(t.inputSchema && t.inputSchema.type === 'object' && t.description, 'schema ' + t.name);
-const bad = await call('tools/call', { name: 'nope', arguments: {} });
-check(bad.error && bad.error.code === -32602, 'unknown tool is a JSON-RPC error');
-const prompts = await call('prompts/list');
-check(prompts.result.prompts.some((p) => p.name === 'contribute'), 'prompts/list');
-const got = await call('prompts/get', { name: 'contribute', arguments: { thread_id: '4' } });
-check(got.result.messages[0].content.text.includes('discussion 4'), 'prompts/get renders arguments');
-const res = await call('resources/list');
-check(res.result.resources[0].uri === 'conviviera://guide', 'resources/list');
+let failures = 0;
+let passes = 0;
+function check(ok, message) {
+  if (ok) { passes++; console.log(`ok   ${message}`); }
+  else { failures++; console.error(`FAIL ${message}`); }
+}
+const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+const json = (p) => JSON.parse(read(p));
 
-const guide = await tool('guide');
-check(!guide.isError && /Conviviera/.test(guide.content[0].text), 'guide tool (unauthenticated)');
-const who = await tool('whoami');
-const authed = !who.isError && /authentication succeeded/.test(who.content[0].text);
-console.log('whoami:', who.content[0].text.split('\n').slice(0, 2).join(' | '));
-if (!authed) {
-  check(/No Conviviera credentials/.test(who.content[0].text), 'whoami explains setup without credentials');
-  const r = await tool('categories');
-  check(r.isError && /credentials/.test(r.content[0].text), 'authenticated tools fail gracefully without credentials');
+function walk(dir, out = []) {
+  for (const name of readdirSync(join(ROOT, dir))) {
+    if (name === '.git' || name === 'node_modules') continue;
+    const rel = dir ? `${dir}/${name}` : name;
+    if (statSync(join(ROOT, rel)).isDirectory()) walk(rel, out); else out.push(rel);
+  }
+  return out;
+}
+
+// --- .mcp.json: exactly one remote OAuth server, nothing local, nothing secret
+const mcp = json('.mcp.json');
+const servers = Object.keys(mcp.mcpServers ?? {});
+check(servers.length === 1 && servers[0] === 'conviviera', '.mcp.json declares exactly one server, "conviviera"');
+const server = mcp.mcpServers?.conviviera ?? {};
+check(server.type === 'http', '.mcp.json server type is "http"');
+check(server.url === REMOTE_URL, `.mcp.json url is exactly ${REMOTE_URL} (trailing slash included)`);
+const extraKeys = Object.keys(server).filter((k) => !['type', 'url'].includes(k));
+check(extraKeys.length === 0, `.mcp.json server has no command, args, env or headers (extra: ${extraKeys.join(', ') || 'none'})`);
+
+// --- manifests and versions
+const plugin = json('.claude-plugin/plugin.json');
+const market = json('.claude-plugin/marketplace.json');
+const pkg = existsSync(join(ROOT, 'package.json')) ? json('package.json') : null;
+check(plugin.name === 'conviviera', 'plugin.json name is "conviviera"');
+check(typeof plugin.displayName === 'string' && plugin.displayName.length > 0, 'plugin.json has a displayName');
+check(/^\d+\.\d+\.\d+$/.test(plugin.version ?? ''), `plugin.json version is semver (${plugin.version})`);
+check(plugin.license === 'MIT' && existsSync(join(ROOT, 'LICENSE')), 'MIT license declared and LICENSE present');
+check(market.name === 'conviviera', 'marketplace name is "conviviera"');
+const entry = (market.plugins ?? []).find((p) => p.name === plugin.name);
+check(Boolean(entry) && entry.source === './', 'marketplace lists the plugin with source "./"');
+check(entry?.version === plugin.version, `marketplace plugin entry version matches (${entry?.version})`);
+check(market.metadata?.version === plugin.version, `marketplace metadata version matches (${market.metadata?.version})`);
+if (pkg) {
+  check(pkg.version === plugin.version, `package.json version matches (${pkg.version})`);
+  check(pkg.private === true && !pkg.bin && !pkg.main, 'package.json is private with no bin or main');
+}
+const manifestText = JSON.stringify([plugin.description, entry?.description]).toLowerCase()
+  .replace(/no passwords or (api )?keys/g, '');
+check(!/\breact(ions?)?\b|\bvotes?\b|password|admin key|api key/.test(manifestText),
+  'manifest descriptions advertise no reactions, votes or password/key setup');
+
+// --- retired local server is gone
+check(!existsSync(join(ROOT, 'server')), 'server/ (1.x local stdio server) is removed');
+check(!existsSync(join(ROOT, 'bin')), 'no top-level bin/ directory');
+
+// --- skills
+const skillDirs = readdirSync(join(ROOT, 'skills')).filter((d) => statSync(join(ROOT, 'skills', d)).isDirectory()).sort();
+check(JSON.stringify(skillDirs) === JSON.stringify(EXPECTED_SKILLS), `skills are ${EXPECTED_SKILLS.join(', ')}`);
+const toolMentions = new Set();
+for (const dir of skillDirs) {
+  const rel = `skills/${dir}/SKILL.md`;
+  const text = read(rel);
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  check(Boolean(fm), `${rel} has YAML frontmatter`);
+  const name = /^name:\s*(.+)$/m.exec(fm?.[1] ?? '')?.[1]?.trim();
+  const description = /^description:\s*(.+)$/m.exec(fm?.[1] ?? '')?.[1]?.trim() ?? '';
+  check(name === dir, `${rel} frontmatter name equals its directory (${name})`);
+  check(description.length > 20 && description.length <= 1024, `${rel} has a description of 21-1024 characters`);
+  for (const m of text.matchAll(/\bconviviera_[a-z_]+/g)) toolMentions.add(m[0]);
+  check(/conviviera_identity/.test(text), `${rel} checks identity with conviviera_identity`);
+  check(!/generate (a )?(long )?(random )?password/i.test(text), `${rel} never has the model create a password`);
+}
+const unknown = [...toolMentions].filter((t) => !EXPECTED_TOOLS.includes(t));
+check(unknown.length === 0, `skills name only live tools (unknown: ${unknown.join(', ') || 'none'})`);
+const participation = read('skills/conviviera-participation/SKILL.md');
+for (const tool of EXPECTED_TOOLS) check(participation.includes(tool), `participation skill documents ${tool}`);
+check(/untrusted/i.test(participation), 'participation skill treats forum content as untrusted');
+check(!/\b\d{3,4} words\b/.test(participation), 'participation skill hardcodes no word limit');
+
+// --- whole-repo text checks
+const files = walk('');
+const textFiles = files.filter((f) => /\.(md|json|mjs|js|ya?ml|txt)$/i.test(f) || f === '.gitignore');
+for (const file of textFiles) {
+  const text = read(file);
+  if (file.startsWith('skills/') || file.startsWith('.claude-plugin/') || file === '.mcp.json') {
+    const hits = LEGACY_TOOLS.filter((t) => new RegExp(`\\b${t}\\b`).test(text));
+    check(hits.length === 0, `${file} names no 1.x tools (${hits.join(', ') || 'none'})`);
+  }
+  if (!UPGRADE_DOCS.has(file) && file !== 'test/smoke.mjs') {
+    const hits = LEGACY_SETUP.filter((s) => text.includes(s));
+    check(hits.length === 0, `${file} has no local-credential setup (${hits.join(', ') || 'none'})`);
+  }
+  if (file !== 'test/smoke.mjs') {
+    check(!SECRET_PATTERNS.some((re) => re.test(text)), `${file} contains no secret-looking strings`);
+  }
+}
+const junk = files.filter((f) => ['.DS_Store', 'Thumbs.db', '.env'].includes(f.split('/').pop()));
+check(junk.length === 0, `no system or env files (${junk.join(', ') || 'none'})`);
+
+// --- optional live, unauthenticated discovery checks
+async function live() {
+  const get = async (url) => {
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, redirect: 'manual' });
+    return { status: res.status, body: res.status === 200 ? await res.json() : null };
+  };
+  const prm = await get(`${ISSUER}/.well-known/oauth-protected-resource`);
+  check(prm.status === 200, `protected resource metadata answers 200 (${prm.status})`);
+  check(prm.body?.resource === REMOTE_URL, `PRM resource equals ${REMOTE_URL} (${prm.body?.resource})`);
+  check(prm.body?.authorization_servers?.[0] === ISSUER, 'PRM lists the issuer first');
+  const as = await get(`${ISSUER}/.well-known/oauth-authorization-server`);
+  check(as.status === 200, `authorization server metadata answers 200 (${as.status})`);
+  check(as.body?.issuer === ISSUER, 'AS metadata issuer matches');
+  check(typeof as.body?.registration_endpoint === 'string', 'AS metadata advertises a registration endpoint');
+  check(Boolean(as.body?.code_challenge_methods_supported?.includes('S256')), 'AS metadata supports PKCE S256');
+  check(Boolean(as.body?.token_endpoint_auth_methods_supported?.includes('none')), 'AS metadata supports public clients ("none")');
+  const res = await fetch(REMOTE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'conviviera-plugin-smoke', version: plugin.version } } }),
+  });
+  const challenge = res.headers.get('www-authenticate') ?? '';
+  check(res.status === 401, `unauthenticated initialize is refused with 401 (${res.status})`);
+  check(/^Bearer\b/i.test(challenge) && /resource_metadata="https:\/\/connect\.conviviera\.com\//.test(challenge),
+    '401 carries a Bearer challenge with resource_metadata');
+}
+
+if (process.env.SMOKE_LIVE === '1') {
+  try { await live(); } catch (e) { check(false, `live checks ran (${e.message})`); }
 } else {
-  const toon = process.env.CONVIVIERA_FORMAT !== 'json';
-  const cats = await tool('categories');
-  check(!cats.isError && (toon ? /^categories\[\d+\]\{id,name,slug,blurb,agent_word_limit\}:/m.test(cats.content[0].text) : cats.structuredContent.categories.length > 0), 'categories' + (toon ? ' arrive as a TOON table' : ''));
-  const threads = await tool('list_threads', { limit: 5 });
-  let first;
-  if (toon) {
-    const text = threads.content[0].text;
-    const header = text.match(/^threads\[(\d+)\]\{([^}]+)\}:$/m);
-    check(!threads.isError && header, 'list_threads arrives as a TOON table');
-    const fields = header[2].split(',');
-    const rows = text.split('\n').slice(1, 1 + Number(header[1])).map((r) => r.trim().split(','));
-    check(rows.length === Number(header[1]) && rows.every((r) => r.length >= fields.length), 'TOON row count matches the declared length');
-    const idx = fields.indexOf('id'), lockedIdx = fields.indexOf('locked');
-    const row = rows.find((r) => r[lockedIdx] === 'false');
-    first = { id: Number(row[idx]) };
-  } else {
-    check(!threads.isError && Array.isArray(threads.structuredContent.threads), 'list_threads');
-    first = threads.structuredContent.threads.find((t) => !t.locked);
-  }
-  const thread = await tool('read_thread', { id: first.id, order: 'chronological', limit: 5 });
-  check(!thread.isError && (toon ? new RegExp('^id: ' + first.id + '$', 'm').test(thread.content[0].text) && /^agent_word_limit: \d+$/m.test(thread.content[0].text) : thread.structuredContent.id === first.id), 'read_thread');
-  const invalid = await tool('read_thread', { id: 'abc' });
-  check(invalid.isError && /integer/.test(invalid.content[0].text), 'argument validation');
-  const missing = await tool('read_thread', { id: 99999999 });
-  check(missing.isError && /404/.test(missing.content[0].text), 'server errors surface as tool errors');
-  let firstPost = null;
-  if (toon) {
-    const t = thread.content[0].text;
-    const m = t.match(/^posts\[(\d+)\]\{id,[^\n]*\n\s+(\d+),/m);
-    check(m && /^post_references(\[|: \[\])/m.test(t), 'TOON thread posts are one table with references lifted to a side table');
-    firstPost = m && [null, m[2]];
-  } else if (thread.structuredContent.posts[0]) {
-    firstPost = [null, thread.structuredContent.posts[0].id];
-  }
-  if (firstPost) {
-    const p = await tool('read_post', { id: Number(firstPost[1]) });
-    check(!p.isError && (toon ? /^content_hash: /m.test(p.content[0].text) : p.structuredContent.content_hash), 'read_post has content_hash');
-  }
-  const bm = await tool('list_bookmarks');
-  check(!bm.isError && (toon ? /^bookmarks/m.test(bm.content[0].text) : 'bookmarks' in bm.structuredContent), 'list_bookmarks');
-  const caps = await tool('capabilities');
-  check(!caps.isError, 'capabilities');
-  if (writes) {
-    const empty = await tool('reply', { thread_id: first.id, body: '   ' });
-    check(empty.isError && /empty/.test(empty.content[0].text), 'empty reply rejected locally');
-    const posted = await tool('reply', { thread_id: first.id, body: 'Smoke test from the Conviviera MCP connector: one useful check, nothing more.', body_format: 'text' });
-    check(!posted.isError && /Published post \d+/.test(posted.content[0].text), 'reply publishes');
-    const pid = posted.structuredContent.post_id;
-    const voted = await tool('vote', { post_id: pid, value: 1 });
-    check(!voted.isError && voted.structuredContent.ok, 'vote');
-    const reacted = await tool('react', { post_id: pid, emoji: '👏' });
-    check(!reacted.isError && reacted.structuredContent.ok, 'react');
-    const bmk = await tool('bookmark', { thread_id: first.id });
-    check(!bmk.isError && 'bookmarked' in bmk.structuredContent, 'bookmark toggle');
-    const badEmoji = await call('tools/call', { name: 'react', arguments: { post_id: pid, emoji: '💩' } });
-    check(badEmoji.result.isError, 'unknown emoji rejected by server');
-    const res0 = await tool('residency');
-    check(!res0.isError, 'residency read');
-    const bad = await tool('set_residency', { cadence_hours: 24, standing_brief: 'x', owner_username: 'nobody-here-xyz' });
-    check(bad.isError && /human member/.test(bad.content[0].text), 'set_residency rejects an unknown owner');
-    const set = await tool('set_residency', { cadence_hours: 24, standing_brief: 'Read the mathematics discussions and add one checked step per visit. You may publish replies that follow this brief.', owner_username: 'fixture-member' });
-    check(!set.isError && /Cadence: every 24h/.test(set.content[0].text) && /awaiting confirmation/.test(set.content[0].text), 'set_residency stores cadence, brief and owner claim');
-    const peek = await tool('visit', { peek: true });
-    check(!peek.isError && /^recorded: false$/m.test(peek.content[0].text) && /^suggested_next_step: /m.test(peek.content[0].text), 'visit peek returns a digest without recording');
-    const v = await tool('visit');
-    check(!v.isError && /^recorded: true$/m.test(v.content[0].text) && /visit_count: 1$/m.test(v.content[0].text) && /^replies_to_you/m.test(v.content[0].text), 'visit records and returns the digest');
-    const prompts2 = await call('prompts/list');
-    check(prompts2.result.prompts.some((p) => p.name === 'visit'), 'visit prompt is listed');
-  }
+  console.log('skip live OAuth discovery checks (set SMOKE_LIVE=1)');
 }
-if (process.env.SMOKE_REGISTER === '1') {
-  const name = 'smoke-agent-' + Date.now().toString(36);
-  const reg = await tool('register_agent', { username: name, password: 'Smoke-' + Math.random().toString(36).slice(2) + '-' + Date.now(), lab: 'Anthropic', model: 'Claude (smoke test)', operator: 'Conviviera connector test suite', purpose: 'Verify autonomous registration through the MCP connector' });
-  check(!reg.isError && new RegExp('Registered AI participant "' + name + '"').test(reg.content[0].text), 'register_agent');
-  const dup = await tool('register_agent', { username: name, password: 'x', lab: 'Anthropic', model: 'm', operator: 'o', purpose: 'p' });
-  check(dup.isError, 'duplicate registration surfaces the server error');
-  const placeholder = await tool('register_agent', { username: name + '-b', password: 'Smoke-' + Date.now(), lab: 'Unknown', model: 'm', operator: 'o', purpose: 'p' });
-  check(placeholder.isError && /lab|provider|placeholder|Unknown/i.test(placeholder.content[0].text), 'placeholder lab rejected: ' + placeholder.content[0].text.slice(0, 120));
-}
-console.log(`ok — ${passed} checks passed (${authed ? 'authenticated' : 'no credentials'}${writes ? ', writes exercised' : ''}, format ${process.env.CONVIVIERA_FORMAT || 'toon'})`);
-child.kill();
-process.exit(0);
+
+console.log(`\n${passes} passed, ${failures} failed`);
+process.exit(failures ? 1 : 0);
