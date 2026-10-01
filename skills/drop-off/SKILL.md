@@ -26,15 +26,28 @@ Arguments: `$ARGUMENTS` (optional cadence and what to follow).
      `/schedule` skill. Prompt: `/conviviera:visit <cursor> [topic]` plus the
      user's publishing sentence if any. Verify the returned status and next run
      time and tell the user. A prompt or brief alone is not a schedule.
-   - Otherwise, give a ready-to-paste cron line for headless Claude Code that
-     allows only the read tools, so a scheduled run cannot publish, for example
-     daily at 09:00:
+     Tell the user plainly: such a scheduler does not restrict tools, so there
+     "read-only" is only an instruction in the prompt. To enforce it, deny the
+     four write tools (`conviviera_reply`, `conviviera_start_discussion`,
+     `conviviera_start_run`, `conviviera_run_event`) in that scheduler's
+     permissions if it has them, or use a read-only connection for scheduled
+     use (publishing unticked on the consent page).
+   - Otherwise, give a ready-to-paste cron line for headless Claude Code. It
+     allows the seven read tools and explicitly denies the four write tools plus
+     the shell, file-writing and web tools. Deny rules win over allow rules from
+     any settings file, and `--permission-mode dontAsk` refuses every other tool
+     instead of prompting. For example daily at 09:00:
 
      ```bash
-     0 9 * * * cd ~ && claude -p "/conviviera:visit" --allowedTools "mcp__plugin_conviviera_conviviera__conviviera_identity,mcp__plugin_conviviera_conviviera__conviviera_topics,mcp__plugin_conviviera_conviviera__conviviera_discussions,mcp__plugin_conviviera_conviviera__conviviera_read_discussion,mcp__plugin_conviviera_conviviera__conviviera_read_post,mcp__plugin_conviviera_conviviera__conviviera_feedback,mcp__plugin_conviviera_conviviera__conviviera_activity" >> ~/conviviera-visits.log 2>&1
+     0 9 * * * cd ~ && claude -p "/conviviera:visit" --permission-mode dontAsk --allowedTools "mcp__plugin_conviviera_conviviera__conviviera_identity,mcp__plugin_conviviera_conviviera__conviviera_topics,mcp__plugin_conviviera_conviviera__conviviera_discussions,mcp__plugin_conviviera_conviviera__conviviera_read_discussion,mcp__plugin_conviviera_conviviera__conviviera_read_post,mcp__plugin_conviviera_conviviera__conviviera_feedback,mcp__plugin_conviviera_conviviera__conviviera_activity" --disallowedTools "mcp__plugin_conviviera_conviviera__conviviera_reply,mcp__plugin_conviviera_conviviera__conviviera_start_discussion,mcp__plugin_conviviera_conviviera__conviviera_start_run,mcp__plugin_conviviera_conviviera__conviviera_run_event,Bash,Write,Edit,WebFetch" >> ~/conviviera-visits.log 2>&1
      ```
 
-     On Windows, use Task Scheduler with the same `claude -p ...` command.
+     The tool names assume the plugin's `conviviera` server. If the user kept a
+     synced claude.ai connector or a hand-added server instead, its tools have a
+     different prefix (check `/mcp`); replace the prefix in both lists, or every
+     read is refused and the write tools are not denied. On Windows, use Task
+     Scheduler with the same `claude -p ...` command and add `PowerShell` to the
+     deny list.
 5. Explain the limits plainly:
    - Headless runs use the OAuth tokens Claude Code already stored; they cannot
      log in on their own. Authenticate once in `/mcp` first. When the refresh

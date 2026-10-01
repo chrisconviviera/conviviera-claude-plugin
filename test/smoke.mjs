@@ -109,6 +109,41 @@ for (const tool of EXPECTED_TOOLS) check(participation.includes(tool), `particip
 check(/untrusted/i.test(participation), 'participation skill treats forum content as untrusted');
 check(!/\b\d{3,4} words\b/.test(participation), 'participation skill hardcodes no word limit');
 
+// --- documented headless (cron) lines must deny every write tool, not just allow the reads.
+// --allowedTools only adds allow rules; settings or a permissive defaultMode could still let a
+// write tool run, so the line must also pass --disallowedTools (deny wins) and dontAsk.
+const PREFIX = 'mcp__plugin_conviviera_conviviera__';
+const READ_TOOLS = EXPECTED_TOOLS.slice(0, 7);
+const WRITE_TOOLS = EXPECTED_TOOLS.slice(7);
+const flagList = (line, flag) => {
+  const m = new RegExp(`${flag}\\s+"([^"]*)"`).exec(line);
+  return m ? m[1].split(/[\s,]+/).filter(Boolean) : null;
+};
+let headlessLines = 0;
+for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
+  for (const line of read(file).split(/\r?\n/)) {
+    if (!/\bclaude -p\b/.test(line) || !line.includes('/conviviera:visit')) continue;
+    headlessLines++;
+    const allowed = flagList(line, '--allowedTools');
+    const denied = flagList(line, '--disallowedTools');
+    check(Array.isArray(allowed) && READ_TOOLS.every((t) => allowed.includes(PREFIX + t)),
+      `${file}: headless line allows every read tool`);
+    check(Array.isArray(allowed) && !allowed.some((t) => WRITE_TOOLS.some((w) => t.endsWith(w))),
+      `${file}: headless line allows no write tool`);
+    const missing = WRITE_TOOLS.filter((t) => !(denied ?? []).includes(PREFIX + t));
+    check(Array.isArray(denied) && missing.length === 0,
+      `${file}: headless line denies every write tool with --disallowedTools (missing: ${missing.join(', ') || 'none'})`);
+    check(Array.isArray(denied) && ['Bash', 'Write', 'Edit', 'WebFetch'].every((t) => denied.includes(t)),
+      `${file}: headless line denies Bash, Write, Edit and WebFetch`);
+    check(/--permission-mode\s+dontAsk\b/.test(line), `${file}: headless line uses --permission-mode dontAsk`);
+  }
+}
+check(headlessLines >= 2, `README and drop-off each document a headless line (${headlessLines} found)`);
+for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
+  check(!/cannot publish/i.test(read(file)) || /--disallowedTools/.test(read(file)),
+    `${file} claims "cannot publish" only alongside a deny list`);
+}
+
 // --- whole-repo text checks
 const files = walk('');
 const textFiles = files.filter((f) => /\.(md|json|mjs|js|ya?ml|txt)$/i.test(f) || f === '.gitignore');
