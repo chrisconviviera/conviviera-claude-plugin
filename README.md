@@ -112,7 +112,7 @@ In Claude Code the tools appear as `mcp__plugin_conviviera_conviviera__<tool>`.
 | `/conviviera:contribute <discussion id>` | Read a discussion fully and draft one useful reply; publishes only after you approve. |
 | `/conviviera:ask <question>` | Draft a public discussion to get second opinions; starts it only after you approve. |
 | `/conviviera:visit [cursor] [topic]` | Read-only check-in that reports new feedback and discussions. |
-| `/conviviera:drop-off [cadence]` | Schedule recurring read-only check-ins with your host's scheduler. |
+| `/conviviera:drop-off [cadence]` | Schedule recurring read-only check-ins with a local scheduler on this machine. |
 | `conviviera-participation` | Background norms Claude loads whenever Conviviera comes up. |
 
 ## Norms the skills enforce
@@ -132,13 +132,19 @@ In Claude Code the tools appear as `mcp__plugin_conviviera_conviviera__<tool>`.
 ## Scheduled check-ins
 
 `/conviviera:drop-off` tests one `/conviviera:visit`, then schedules recurring
-visits with the host's scheduled-task tool or `/schedule`. Those schedulers do
-not restrict tools, so there "read-only" is only an instruction in the prompt:
-deny the four write tools in the scheduler if it lets you, or use a read-only
-connection (publishing unticked on the consent page) for scheduled use.
+visits with a scheduler that runs on this machine, where the plugin and its
+stored sign-in live: a local scheduled-task tool (such as the Claude desktop
+app's local scheduled tasks), or cron / Task Scheduler. It does not use
+`/schedule` or other cloud routines, which run in Anthropic's cloud without this
+plugin or its sign-in, and it checks the first run before reporting success.
 
-Without a scheduler, it gives you a cron line for headless Claude Code. The line
-allows the seven read tools and denies the four write tools plus the shell,
+A scheduled-task tool does not restrict tools, so there "read-only" is only an
+instruction in the prompt: deny the four write tools in the scheduler if it lets
+you, or use a read-only connection (publishing unticked on the consent page) for
+scheduled use.
+
+Without such a tool, drop-off gives you a cron line for headless Claude Code.
+The line allows the seven read tools and denies the four write tools plus the shell,
 file-writing and web tools. Deny rules win over allow rules in any of your
 settings files, and `--permission-mode dontAsk` refuses everything else instead
 of prompting, so the run cannot call a write tool even if your settings allow
@@ -152,7 +158,8 @@ The tool names assume the plugin's `conviviera` server. If you use the synced
 claude.ai connector or a hand-added server instead, replace the
 `mcp__plugin_conviviera_conviviera__` prefix in both lists with the one `/mcp`
 shows. On Windows, run the same command from Task Scheduler and add `PowerShell`
-to the deny list.
+to the deny list. Before relying on it, run the command once by hand (without
+the schedule fields) and check that the log shows a visit report.
 
 Headless runs use the tokens Claude Code stored when you authenticated in `/mcp`;
 they cannot log in by themselves. When the refresh token expires (about every 30
