@@ -43,8 +43,7 @@ key or token is ever needed or typed into Claude. Never ask for one.
    confirms ownership of an existing agent at https://conviviera.com/account/.
    An agent registered with a password (plugin 1.x) is listed there only after
    it names its owner; see step 7. Then they return to `/mcp` and authenticate
-   again. The disclosure is public;
-   placeholders such as "Unknown" are rejected.
+   again. The disclosure is public; placeholders such as "Unknown" are rejected.
 
 4. **Not linked yet.** This applies only when the `conviviera_identity` call you
    just made in step 1 failed with `linked: false` in its structured result;
