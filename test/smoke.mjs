@@ -81,6 +81,37 @@ const manifestText = JSON.stringify([plugin.description, entry?.description]).to
 check(!/\breact(ions?)?\b|\bvotes?\b|password|admin key|api key/.test(manifestText),
   'manifest descriptions advertise no reactions, votes or password/key setup');
 
+// --- nothing that runs code on the user's machine. Whatever lands on main is what every user
+// installs (marketplace source "./"), so the manifests may carry only metadata: no hooks, no
+// stdio or extra MCP/LSP servers, no inline components, no executables. New keys, top-level
+// entries or script files must be added here deliberately, in review.
+const PLUGIN_KEYS = ['name', 'displayName', 'description', 'version', 'author', 'homepage', 'repository', 'license', 'keywords'];
+const ENTRY_KEYS = ['name', 'source', 'description', 'version', 'author', 'homepage', 'repository', 'license', 'category', 'keywords', 'tags'];
+const MARKET_KEYS = ['$schema', 'name', 'owner', 'metadata', 'plugins'];
+const extraPlugin = Object.keys(plugin).filter((k) => !PLUGIN_KEYS.includes(k));
+check(extraPlugin.length === 0, `plugin.json has only metadata keys (no hooks, mcpServers, lspServers, commands...; extra: ${extraPlugin.join(', ') || 'none'})`);
+check(Object.keys(market).every((k) => MARKET_KEYS.includes(k)), 'marketplace.json has only name, owner, metadata and plugins');
+check((market.plugins ?? []).length === 1, 'marketplace lists exactly one plugin');
+for (const p of market.plugins ?? []) {
+  const extra = Object.keys(p).filter((k) => !ENTRY_KEYS.includes(k));
+  check(extra.length === 0, `marketplace entry ${p.name} has no inline hooks, servers, strict:false or components (extra: ${extra.join(', ') || 'none'})`);
+}
+const ROOT_ENTRIES = ['.claude-plugin', '.github', 'skills', 'test', '.gitignore', '.mcp.json', 'CHANGELOG.md',
+  'LICENSE', 'README.md', 'SECURITY.md', 'package.json'];
+const rootExtra = readdirSync(ROOT).filter((n) => !['.git', 'node_modules'].includes(n) && !ROOT_ENTRIES.includes(n));
+check(rootExtra.length === 0, `repository root has only expected entries (no hooks/, agents/, bin/, settings.json, .lsp.json...; extra: ${rootExtra.join(', ') || 'none'})`);
+const pluginDirFiles = readdirSync(join(ROOT, '.claude-plugin')).sort();
+check(JSON.stringify(pluginDirFiles) === JSON.stringify(['marketplace.json', 'plugin.json']), '.claude-plugin/ holds only marketplace.json and plugin.json');
+const allFiles = walk('');
+const scripts = allFiles.filter((f) => /\.(c?js|mjs|ts|sh|bash|zsh|ps1|psm1|py|rb|pl|exe|bat|cmd|dll|so|dylib|node)$/i.test(f) && !f.startsWith('test/'));
+check(scripts.length === 0, `no scripts or binaries outside test/ (${scripts.join(', ') || 'none'})`);
+check(!allFiles.some((f) => /(^|\/)(hooks\.json|\.lsp\.json)$/.test(f) || (f.endsWith('.mcp.json') && f !== '.mcp.json')),
+  'no hooks.json, .lsp.json or second .mcp.json anywhere');
+for (const dir of readdirSync(join(ROOT, 'skills'))) {
+  const extra = readdirSync(join(ROOT, 'skills', dir)).filter((n) => n !== 'SKILL.md');
+  check(extra.length === 0, `skills/${dir}/ holds only SKILL.md (extra: ${extra.join(', ') || 'none'})`);
+}
+
 // --- retired local server is gone
 check(!existsSync(join(ROOT, 'server')), 'server/ (1.x local stdio server) is removed');
 check(!existsSync(join(ROOT, 'bin')), 'no top-level bin/ directory');

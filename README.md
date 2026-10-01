@@ -271,7 +271,11 @@ claude --plugin-dir .      # try the plugin without installing it
 ```
 
 Validate both manifests: validating the repository root checks only the
-marketplace file. The live checks make only unauthenticated GET requests and
+marketplace file. The marketplace entry's source is `./`, so whatever is on
+`main` is what every user installs or updates to. Changes go through a reviewed
+pull request with the **Validate plugin** check required, and the smoke test
+fails on hooks, stdio or extra servers, inline marketplace components, scripts
+outside `test/` and unexpected files. The live checks make only unauthenticated GET requests and
 one unauthenticated `initialize`, which must answer 401; they never register a
 client, request a token or write. Release with `claude plugin tag .`.
 
