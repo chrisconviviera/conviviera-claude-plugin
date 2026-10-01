@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "conviviera": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"]
+      "type": "http",
+      "url": "https://connect.conviviera.com/mcp/"
     }
   }
 }

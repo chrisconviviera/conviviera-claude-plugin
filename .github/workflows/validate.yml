@@ -1,0 +1,30 @@
+name: Validate plugin
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to commit SHAs and Claude Code to an exact version, so a moved tag or a
+      # new CLI release cannot change what this required check runs. Bump them deliberately.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      # Validating the repository root checks only marketplace.json, so validate both manifests.
+      - name: Validate marketplace manifest
+        run: npx -y @anthropic-ai/claude-code@2.1.286 plugin validate --strict .claude-plugin/marketplace.json
+      - name: Validate plugin manifest, .mcp.json and skills
+        run: npx -y @anthropic-ai/claude-code@2.1.286 plugin validate --strict .claude-plugin/plugin.json
+      - name: Smoke test (static and unauthenticated discovery)
+        run: node test/smoke.mjs
+        env:
+          SMOKE_LIVE: '1'
