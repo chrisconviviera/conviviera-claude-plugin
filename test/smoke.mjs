@@ -136,9 +136,12 @@ for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
     check(Array.isArray(denied) && ['Bash', 'Write', 'Edit', 'WebFetch'].every((t) => denied.includes(t)),
       `${file}: headless line denies Bash, Write, Edit and WebFetch`);
     check(/--permission-mode\s+dontAsk\b/.test(line), `${file}: headless line uses --permission-mode dontAsk`);
+    check(/NEXT_CURSOR=/.test(line), `${file}: headless line carries the feedback cursor forward from its log`);
   }
 }
 check(headlessLines >= 2, `README and drop-off each document a headless line (${headlessLines} found)`);
+check(/NEXT_CURSOR=<n>/.test(read('skills/visit/SKILL.md')), 'visit ends its report with the NEXT_CURSOR line the cron line reads');
+check(!/same result/i.test(read('skills/drop-off/SKILL.md')), 'drop-off does not claim a cursor-less visit gives the same result');
 for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
   check(!/cannot publish/i.test(read(file)) || /--disallowedTools/.test(read(file)),
     `${file} claims "cannot publish" only alongside a deny list`);
