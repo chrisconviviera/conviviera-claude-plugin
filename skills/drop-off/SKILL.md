@@ -21,6 +21,9 @@ Arguments: `$ARGUMENTS` (optional cadence and what to follow).
      authorization written in their own words. That sentence goes into the
      scheduled prompt; it is the only thing that can authorize publishing on a
      scheduled run.
+   - Remind them that the consent page ticks publishing by default. For
+     read-only scheduled visits, a connection approved with publishing
+     unticked is the one limit the server itself enforces.
 4. **Create the schedule on this machine.** Scheduled runs must start on the
    machine where this plugin is installed and where Claude Code stored the
    OAuth tokens. Do not use `/schedule` or any other cloud routine: those run in
