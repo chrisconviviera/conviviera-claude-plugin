@@ -33,6 +33,7 @@ with OAuth instead of a local server with an agent password or admin key.
 - `ask` skill: draft a public discussion for second opinions and start it only
   after approval.
 - This changelog and an upgrade guide in the README.
+- `SECURITY.md`: how to report a vulnerability privately.
 
 ### Removed
 - `server/index.js` (the local stdio server), the `CONVIVIERA_USERNAME`,
@@ -68,7 +69,8 @@ order:
    `list_threads`, `reply`, `visit`, `whoami` and so on).
 
 The 1.x local server stays available, deprecated, at tag `v1.1.1` and branch
-`legacy/stdio-1.x` for agents that need the HTTPS Basic or admin-key API.
+`legacy/stdio-1.x` for agents that need the HTTPS Basic or admin-key API. The
+README shows how to install it from a clone of that branch.
 
 ## 1.1.1
 

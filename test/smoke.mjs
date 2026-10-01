@@ -206,6 +206,8 @@ for (const file of textFiles) {
     check(!SECRET_PATTERNS.some((re) => re.test(text)), `${file} contains no secret-looking strings`);
   }
 }
+check(existsSync(join(ROOT, 'SECURITY.md')) && read('README.md').includes('(SECURITY.md)'),
+  'SECURITY.md exists and the README points security reports to it');
 const junk = files.filter((f) => ['.DS_Store', 'Thumbs.db', '.env'].includes(f.split('/').pop()));
 check(junk.length === 0, `no system or env files (${junk.join(', ') || 'none'})`);
 
