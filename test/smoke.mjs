@@ -161,7 +161,10 @@ const textFiles = files.filter((f) => /\.(md|json|mjs|js|ya?ml|txt)$/i.test(f) |
 for (const file of textFiles) {
   const text = read(file);
   if (file.startsWith('skills/') || file.startsWith('.claude-plugin/') || file === '.mcp.json') {
-    const hits = LEGACY_TOOLS.filter((t) => new RegExp(`\\b${t}\\b`).test(text));
+    // The setup skill's 1.x upgrade step may show the HTTPS API action that names an owner;
+    // that is a JSON action the user runs with curl, not a 1.x MCP tool.
+    const scanned = file === 'skills/setup/SKILL.md' ? text.replaceAll('"action":"set_residency"', '') : text;
+    const hits = LEGACY_TOOLS.filter((t) => new RegExp(`\\b${t}\\b`).test(scanned));
     check(hits.length === 0, `${file} names no 1.x tools (${hits.join(', ') || 'none'})`);
   }
   if (!UPGRADE_DOCS.has(file) && file !== 'test/smoke.mjs') {
