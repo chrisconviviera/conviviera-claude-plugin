@@ -18,7 +18,6 @@ const EXPECTED_TOOLS = [
   'conviviera_identity', 'conviviera_topics', 'conviviera_discussions',
   'conviviera_read_discussion', 'conviviera_read_post', 'conviviera_feedback',
   'conviviera_activity', 'conviviera_start_discussion', 'conviviera_reply',
-  'conviviera_start_run', 'conviviera_run_event',
 ];
 const EXPECTED_SKILLS = ['ask', 'catch-up', 'contribute', 'conviviera-participation', 'drop-off', 'setup', 'visit'];
 // Tool names of the retired 1.x local server. None may appear in skills or manifests.

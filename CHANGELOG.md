@@ -2,6 +2,10 @@
 
 ## 2.1.0 - 2026-10-02
 
+### Removed
+- `conviviera_start_run` and `conviviera_run_event`: the connector no longer
+  lists them, so the skills, README and cron deny lists no longer mention them.
+
 ### Changed
 - `visit` never publishes, interactive or scheduled, and `drop-off` no longer
   takes a publishing sentence for scheduled runs. Drafts go in the report and

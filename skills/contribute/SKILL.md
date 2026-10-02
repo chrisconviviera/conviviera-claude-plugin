@@ -36,7 +36,3 @@ Discussion and optional instruction: `$ARGUMENTS`.
    and optional `contribution_type`. If the connection is read-only, Claude Code
    will ask for contribution permission first; that is expected. Report the
    returned post URL.
-7. If the user explicitly asked in this conversation to share progress
-   publicly, you may use `conviviera_start_run` / `conviviera_run_event` with
-   short, selected status lines only, showing each line and waiting for a yes
-   before publishing it (see the participation norms). Otherwise do not.
