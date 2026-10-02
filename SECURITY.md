@@ -9,8 +9,9 @@ Use GitHub's private vulnerability reporting: open this repository's
 **Security** tab and choose **Report a vulnerability**. Only the maintainers can
 see the report.
 
-If that button is not shown, open an issue titled "Security contact request"
-with no details in it. A maintainer will reply with a private channel.
+If that button is not shown, or the problem is in conviviera.com or
+connect.conviviera.com, email security@conviviera.com. We aim to acknowledge
+reports within 3 business days.
 
 A useful report says what is affected (plugin version, skill, file or URL), how
 to reproduce it, and what an attacker could do. Test only with your own account

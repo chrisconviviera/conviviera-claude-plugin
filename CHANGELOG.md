@@ -21,6 +21,9 @@
   `drop-off` can be started only by the user (`disable-model-invocation`).
 - The marketplace entry no longer calls itself official and uses the same
   description as `plugin.json`.
+- `plugin.json` links the privacy policy, support page and documentation for
+  the directory listing; manifests, README and SECURITY.md give support and
+  security contacts.
 
 ## 2.0.0 - 2026-10-01
 

@@ -30,6 +30,9 @@ const LEGACY_SETUP = ['CONVIVIERA_PASSWORD', 'CONVIVIERA_API_KEY', 'CONVIVIERA_U
 const UPGRADE_DOCS = new Set(['README.md', 'CHANGELOG.md', 'skills/setup/SKILL.md']);
 const SECRET_PATTERNS = [/cv[ko]_[A-Za-z0-9]{8,}/, /\bBasic [A-Za-z0-9+/]{12,}={0,2}/,
   /\bBearer [A-Za-z0-9._~+/-]{20,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
+// Listing fields that `claude plugin validate --strict` accepts in plugin.json. The validator
+// does not check their values, so each one present must be an https:// URL.
+const LISTING_URLS = ['documentationUrl', 'supportUrl', 'privacyPolicyUrl', 'termsOfServiceUrl'];
 
 let failures = 0;
 let passes = 0;
@@ -67,6 +70,9 @@ check(plugin.name === 'conviviera', 'plugin.json name is "conviviera"');
 check(typeof plugin.displayName === 'string' && plugin.displayName.length > 0, 'plugin.json has a displayName');
 check(/^\d+\.\d+\.\d+$/.test(plugin.version ?? ''), `plugin.json version is semver (${plugin.version})`);
 check(plugin.license === 'MIT' && existsSync(join(ROOT, 'LICENSE')), 'MIT license declared and LICENSE present');
+for (const k of LISTING_URLS.filter((k) => k in plugin)) check(/^https:\/\//.test(plugin[k]), `plugin.json ${k} is an https:// URL`);
+check(typeof plugin.privacyPolicyUrl === 'string', 'plugin.json links a privacy policy for the directory listing');
+check(/@/.test(plugin.author?.email ?? ''), 'plugin.json author has a contact email');
 check(market.name === 'conviviera', 'marketplace name is "conviviera"');
 const entry = (market.plugins ?? []).find((p) => p.name === plugin.name);
 check(Boolean(entry) && entry.source === './', 'marketplace lists the plugin with source "./"');
@@ -87,7 +93,7 @@ check(!/\breact(ions?)?\b|\bvotes?\b|password|admin key|api key/.test(manifestTe
 // installs (marketplace source "./"), so the manifests may carry only metadata: no hooks, no
 // stdio or extra MCP/LSP servers, no inline components, no executables. New keys, top-level
 // entries or script files must be added here deliberately, in review.
-const PLUGIN_KEYS = ['name', 'displayName', 'description', 'version', 'author', 'homepage', 'repository', 'license', 'keywords'];
+const PLUGIN_KEYS = ['name', 'displayName', 'description', 'version', 'author', 'homepage', 'repository', 'license', 'keywords', ...LISTING_URLS];
 const ENTRY_KEYS = ['name', 'source', 'description', 'version', 'author', 'homepage', 'repository', 'license', 'category', 'keywords', 'tags'];
 const MARKET_KEYS = ['$schema', 'name', 'owner', 'metadata', 'plugins'];
 const extraPlugin = Object.keys(plugin).filter((k) => !PLUGIN_KEYS.includes(k));

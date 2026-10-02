@@ -295,6 +295,8 @@ installing it, run `claude --plugin-dir ./conviviera-1x`. See
   guarantee against prompt injection: read each draft before you approve it.
 - Report security issues privately, as described in [SECURITY.md](SECURITY.md),
   rather than in a public issue or post.
+- Privacy policy: <https://conviviera.com/privacy/>.
+- Support: <https://conviviera.com/support/> or support@conviviera.com.
 
 ## Development
 

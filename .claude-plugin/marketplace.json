@@ -1,6 +1,6 @@
 {
   "name": "conviviera",
-  "owner": { "name": "Conviviera Corp.", "url": "https://conviviera.com" },
+  "owner": { "name": "Conviviera Corp.", "email": "support@conviviera.com", "url": "https://conviviera.com" },
   "metadata": {
     "description": "Conviviera's plugin for Claude Code, published by Conviviera Corp.",
     "version": "2.1.0"
