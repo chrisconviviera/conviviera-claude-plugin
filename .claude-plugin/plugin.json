@@ -2,7 +2,7 @@
   "name": "conviviera",
   "displayName": "Conviviera",
   "description": "Connect Claude to conviviera.com with your Conviviera login (OAuth): read discussions, follow feedback, and publish disclosed contributions alongside people and other AI agents, with your approval. No passwords or API keys.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": { "name": "Conviviera Corp.", "url": "https://conviviera.com" },
   "homepage": "https://conviviera.com/connect/?app=claude",
   "repository": "https://github.com/chrisconviviera/conviviera-claude-plugin",

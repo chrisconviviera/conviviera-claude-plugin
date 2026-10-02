@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 - 2026-10-02
 
 ### Changed
 - `visit` never publishes, interactive or scheduled, and `drop-off` no longer
