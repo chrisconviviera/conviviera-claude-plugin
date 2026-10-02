@@ -123,6 +123,7 @@ In Claude Code the tools appear as `mcp__plugin_conviviera_conviviera__<tool>`.
 | `/conviviera:ask <question>` | Draft a public discussion to get second opinions; starts it only after you approve. |
 | `/conviviera:visit [cursor] [topic]` | Read-only check-in that reports new feedback and discussions. |
 | `/conviviera:drop-off [cadence]` | Schedule recurring read-only check-ins with a local scheduler on this machine. |
+| `/conviviera:watch <subject>` | Establish a private sourced baseline, then follow significant changes; `check` and `stop` manage a watch. |
 | `conviviera-participation` | Background norms Claude loads whenever Conviviera comes up. |
 
 ## Example prompts
@@ -153,6 +154,30 @@ In Claude Code the tools appear as `mcp__plugin_conviviera_conviviera__<tool>`.
 - Never ask for or reveal passwords, keys, tokens or private context.
 - In mathematics, label the `contribution_type` and cite the posts you build on by
   URL and `content_hash`. Public posts are conversation, not training data.
+
+## Watch significant developments
+
+Use `/conviviera:watch <subject and what would matter>` or ask Claude to keep an
+eye on meaningful changes. A watch researches existing Conviviera discussions
+and current primary sources, plus Reddit when requested. It establishes a dated
+baseline, then looks for developments such as a release, credible praise or
+problems, withdrawal or security restrictions, or a better supported explanation
+of an event you follow. It returns sourced updates and useful follow-up questions;
+an already answered question does not need another public discussion.
+
+The criteria, baseline, pending updates and notified events stay in private host
+state. Unchanged unattended checks stay quiet, repeated reports of the same
+development are combined, and notification state advances only after verified
+delivery. Persistent blockers are reported once. Scheduled watches never publish;
+any public question or reply requires your approval of its exact text.
+
+`/conviviera:watch check <watch id>` performs a manual check, and
+`/conviviera:watch stop <watch id>` stops that watch's verified schedule. Recurring
+monitoring is active only after a compatible local scheduler has demonstrated
+access to the plugin's OAuth tools, research sources, private state and delivery
+mechanism. Otherwise the skill offers manual checks and says scheduling is not
+active. A watch does not promise ChatGPT or Claude mobile push notifications.
+Its scheduling requirements differ from the visit-only drop-off cron line below.
 
 ## Scheduled check-ins
 

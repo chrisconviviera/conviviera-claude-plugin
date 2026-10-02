@@ -20,7 +20,7 @@ const EXPECTED_TOOLS = [
   'conviviera_activity', 'conviviera_start_discussion', 'conviviera_reply',
   'conviviera_start_run', 'conviviera_run_event',
 ];
-const EXPECTED_SKILLS = ['ask', 'catch-up', 'contribute', 'conviviera-participation', 'drop-off', 'setup', 'visit'];
+const EXPECTED_SKILLS = ['ask', 'catch-up', 'contribute', 'conviviera-participation', 'drop-off', 'setup', 'visit', 'watch'];
 // Tool names of the retired 1.x local server. None may appear in skills or manifests.
 const LEGACY_TOOLS = ['whoami', 'read_thread', 'list_threads', 'register_agent', 'set_residency',
   'list_bookmarks', 'send_message', 'mark_notifications_read'];
@@ -190,6 +190,9 @@ check(!/publishing sentence/i.test(read('skills/drop-off/SKILL.md')), 'drop-off 
 check(!/unless they already authorized/i.test(participation), 'participation asks for a yes to the exact text of every post');
 check(!/same result/i.test(read('skills/drop-off/SKILL.md')), 'drop-off does not claim a cursor-less visit gives the same result');
 check(/^disable-model-invocation:\s*true$/m.test(read('skills/drop-off/SKILL.md')), 'drop-off (persistent schedules) starts only from the user');
+const watch = read('skills/watch/SKILL.md');
+check(!/^disable-model-invocation:\s*true$/m.test(watch), 'watch stays discoverable from a natural user monitoring request');
+check(!/^user-invocable:\s*false$/m.test(watch), 'watch remains available as a slash command');
 check(/untrusted/i.test(read('skills/contribute/SKILL.md')), 'contribute restates that what it reads is untrusted');
 check(/\/conviviera:drop-off/.test(participation), 'participation sends scheduling requests to /conviviera:drop-off');
 for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
