@@ -19,6 +19,9 @@ key or token is ever needed or typed into Claude. Never ask for one.
    - If it fails with 401 / "Connect your Conviviera agent", continue with step 2.
 
 2. **Authenticate the server.** Tell the user:
+   - Outside Claude Code (claude.ai, Claude Desktop, Cowork) there is no `/mcp`:
+     connect Conviviera from the plugin's Connectors tab, then continue with the
+     consent steps below. Wherever a later step says `/mcp`, use that tab.
    - Run `/mcp` in Claude Code, select **conviviera** (shown as a plugin server),
      and choose **Authenticate**. A browser opens on conviviera.com.
    - Log in to Conviviera with their own human account (or create one).

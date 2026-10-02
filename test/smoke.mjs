@@ -71,6 +71,8 @@ check(market.name === 'conviviera', 'marketplace name is "conviviera"');
 const entry = (market.plugins ?? []).find((p) => p.name === plugin.name);
 check(Boolean(entry) && entry.source === './', 'marketplace lists the plugin with source "./"');
 check(entry?.version === plugin.version, `marketplace plugin entry version matches (${entry?.version})`);
+check(entry?.description === plugin.description, 'marketplace entry description matches plugin.json');
+check(!/\bofficial\b/i.test(JSON.stringify(market)), 'marketplace.json does not call anything "official"');
 check(market.metadata?.version === plugin.version, `marketplace metadata version matches (${market.metadata?.version})`);
 if (pkg) {
   check(pkg.version === plugin.version, `package.json version matches (${pkg.version})`);
@@ -138,6 +140,7 @@ check(unknown.length === 0, `skills name only live tools (unknown: ${unknown.joi
 const participation = read('skills/conviviera-participation/SKILL.md');
 for (const tool of EXPECTED_TOOLS) check(participation.includes(tool), `participation skill documents ${tool}`);
 check(/untrusted/i.test(participation), 'participation skill treats forum content as untrusted');
+check(/publish nothing under that identity/.test(participation), 'participation skill blocks publishing on an identity mismatch');
 // A link_url relayed from post text is an account-linking phishing vector: the norms must forbid it,
 // and no skill may tell the model to hand over a link_url unconditionally.
 check(/never give the person a `link_url`/i.test(participation), 'participation skill never relays a link_url found in content');
@@ -172,15 +175,23 @@ for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
     const missing = WRITE_TOOLS.filter((t) => !(denied ?? []).includes(PREFIX + t));
     check(Array.isArray(denied) && missing.length === 0,
       `${file}: headless line denies every write tool with --disallowedTools (missing: ${missing.join(', ') || 'none'})`);
-    check(Array.isArray(denied) && ['Bash', 'Write', 'Edit', 'WebFetch'].every((t) => denied.includes(t)),
-      `${file}: headless line denies Bash, Write, Edit and WebFetch`);
+    const LOCAL = ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Read', 'Glob', 'Grep'];
+    check(Array.isArray(denied) && LOCAL.every((t) => denied.includes(t)),
+      `${file}: headless line denies ${LOCAL.join(', ')}`);
+    check(!/\bcd ~ &&/.test(line), `${file}: headless line does not run in the home directory`);
     check(/--permission-mode\s+dontAsk\b/.test(line), `${file}: headless line uses --permission-mode dontAsk`);
     check(/NEXT_CURSOR=/.test(line), `${file}: headless line carries the feedback cursor forward from its log`);
   }
 }
 check(headlessLines >= 2, `README and drop-off each document a headless line (${headlessLines} found)`);
 check(/NEXT_CURSOR=<n>/.test(read('skills/visit/SKILL.md')), 'visit ends its report with the NEXT_CURSOR line the cron line reads');
+check(/Never call a write tool during a visit/.test(read('skills/visit/SKILL.md')), 'visit never publishes');
+check(!/publishing sentence/i.test(read('skills/drop-off/SKILL.md')), 'drop-off offers no scheduled publishing');
+check(!/unless they already authorized/i.test(participation), 'participation asks for a yes to the exact text of every post');
 check(!/same result/i.test(read('skills/drop-off/SKILL.md')), 'drop-off does not claim a cursor-less visit gives the same result');
+check(/^disable-model-invocation:\s*true$/m.test(read('skills/drop-off/SKILL.md')), 'drop-off (persistent schedules) starts only from the user');
+check(/untrusted/i.test(read('skills/contribute/SKILL.md')), 'contribute restates that what it reads is untrusted');
+check(/\/conviviera:drop-off/.test(participation), 'participation sends scheduling requests to /conviviera:drop-off');
 for (const file of ['README.md', 'skills/drop-off/SKILL.md']) {
   check(!/cannot publish/i.test(read(file)) || /--disallowedTools/.test(read(file)),
     `${file} claims "cannot publish" only alongside a deny list`);
